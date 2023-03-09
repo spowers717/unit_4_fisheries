@@ -1,0 +1,176 @@
+---
+title: "4.4 PCA"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=6, fig.asp = 0.618, collapse=TRUE) 
+```
+
+### Unit 4: Fisheries
+#### Lesson 4: Principal Component Analysis
+#### New skills: prcomp(), ggbiplot::ggbiplot(), ggbiplot::biplot()
+
+***
+
+### Principal Component Analysis
+
+Principal Component Analysis (PCA) is helpful when your data contain many variables. This is a method of unsupervised learning that allows you to better understand the variability in the data set and how different variables are related. PCAs are insensitive to correlation among variables (i.e. you don't need to stress about multicollinearity) and efficient in detecting sample outliers. 
+
+PCA is a type of linear transformation that fits your data to a new coordinate system in such a way that the most significant variance is found on the first principal component (PC1). Each principal component is orthogonal to the other PCs, and each consecutive PC explains a smaller proportion of the variance than the previous PCs. In this way, you transform a set of x correlated variables over y samples to a set of p uncorrelated principal components over the same number of samples. 
+
+Typically, the goal of using a PCA is to reduce the dimensionality of your data. You may have many variables that are important to your data, but it's difficult to look at all of these variables at once. If you run a PCA, you might be able to explain most of the variation in your data with just the first 2 principal components, and thus you'll only need to look at 2 variables (PC1 and PC2). Plotting just 2 variables is easy! And if you examine the "loadings" of your principal components, you'll see how much each of your original variables contributes to each PC (and how those contributions compare to the contributions made by the other original variables).
+
+### PCAs and penguins
+
+That's right. We're going back to the penguin data.
+
+```{r, message=FALSE}
+library(tidyverse)
+library(palmerpenguins)
+
+```
+
+First we need to clean our data so it's ready for a PCA. PCAs can only be performed on numeric variables, so we'll choose the 4 biological measurement variables (bill length, bill depth, body mass and flipper length) for our analysis. PCAs will not run with `NA`s in the data, so these must be removed. Finally, I will create 2 separate data.frames, 1) a PCA data table with the numeric variables I'll use in the PCA, and 2) a metadata table with all of the categorical variables (like species, sex, etc.) associated with my PCA data. It is important that the row order is maintained in both of these data.frames, so that the metadata in row 1 is the correct information associated with the numeric variables in row 1 of the PCA data table.
+
+```{r}
+head(penguins)
+
+pen_drop_na = penguins %>%
+  drop_na() # NAs are not allowed in a PCA
+head(pen_drop_na)
+# Isolate the variables I want to use in my PCA
+pen_num = pen_drop_na %>%
+  select(ends_with("mm"), body_mass_g) 
+# Metadata associated with pen_num (maintain row order!)
+pen_meta = pen_drop_na %>%
+  select(species, sex, island, year)
+head(pen_num)
+```
+
+Now that we've properly separated our variables into data and metadata, we can run the PCA! We'll use the `prcomp()` function in base R. This function uses the Singular Value Decomposition method for PCA, which is the most common method. 
+
+We'll set the `scale.` parameter to `TRUE` so that the variance of each of your variables (columns) are scaled (normalized) to have unit variance before the analysis takes place. We'll set the `center` parameter to `TRUE` as well; this doesn't change the analysis mathematically, but the resulting PCs will be centered over zero, which is typically how PCAs are presented.
+
+```{r}
+# Run PCA
+pen_pca = prcomp(pen_num, scale.=TRUE, center=TRUE)
+```
+
+Yeah, it's that simple. So let's take a look at the results of the PCA. By default, the function `prcomp()` will calculate as many principal components as the smaller dimension of your 2-D data.frame. So we ran the PCA on `pen_num` which has 333 different penguins that were sampled (rows), and 4 variables per observation (columns); therefore there will be 4 PCs calculated. 
+
+PCs are ordered by the amount of variance that they explain, where PC1 is the PC that explains the most variance. PCAs are typically most useful when the first 2 PCs explain most of the variance in your data (i.e. over 50% at least!). If PC1 only explains 25% of the variance in your data, and PC2 only explains 15% of the variation in your data, then the first 2 PCs are not doing a good job of characterizing your full dataset, and you probably need to choose a new method of analysis.
+
+```{r}
+summary(pen_pca) #
+print(pen_pca) # shows standard deviations and loadings
+str(pen_pca) # Examine structure of the variable
+```
+
+Performing a `summary()` on our PCA output shows us that PC1 explains 69% of the variance and PC2 explains 19% of the variance in our data, so combined, PC1 and PC2 explain 88% of the variance in our data. That's great! Then we used `str()` to look at the different components of the PCA object.
+
+
+The `summary()` function showed us the proportion of variance of each of our PCs. We can extract these directly from the summary, or we can calculate them ourselves. The proportion of variance is equal to the normalized standard deviations, so for PC1, the proportion of variance is equal to: 
+
+sdev_PC1^2 / sum(sdev_PC1 + sdev_PC2 + sdev_PC3 + sdev_PC4)^2
+
+where the standard deviations of each PC are available in `pen_pca$sdev`
+
+```{r}
+pen_pca$sdev # Look at standard deviations of each PC
+str(summary(pen_pca)) # shows that summary stats are calculated and stored in $importance
+summary(pen_pca)$importance[2,] # extract proportion of variance from summary()
+pen_pca$sdev^2/sum(pen_pca$sdev^2) # calculate proportion of variance manually 
+```
+
+We can look at the rotation matrix output from the prcomp object to see the PCA loadings. This tells us how much each of our 4 original variables (bill length, etc.) contribute to each PC. This is essentially the correlation between each variable and each PC.
+
+```{r}
+pen_pca$rotation # loadings
+```
+
+Looking under the PC1 column, we see how each of our 4 variables contributes to this first principal component. We see that all 4 variables contribute substantially to PC1, and as PC1 increases, the bill length, flipper length and body mass increase, whereas the bill depth decreases. The variation in PC2 is dominated by the bill length and bill depth variables, whereas the flipper length and body mass variable don't contribute much. And now, unlike in PC1, the direction of the contribution of bill length and bill depth is the same. So when PC2 increases, bill length and bill depth both decrease.
+
+We can look at the actual coordinates (also called scores) of each principal component. The number of coordinates for each PC is equal to the number of observations going in, so PC1 is a vector with length 333, same as the number of penguin observations we started with.
+
+```{r}
+head(pen_pca$x) # contains the principal components
+dim(pen_pca$x) 
+```
+
+### Scree plot
+
+The scree plot is often presented alongside a PCA analysis. The scree plot is a bar plot where the height of each bar corresponds to the proportion of variance explained by each PCA (which is equivalent to the eigenvalue of that PC). The default plot from base R's `plot()` function, when acting on an object of the class `prcomp`, is the scree plot. However, the plot.prcomp() function plots the variances of each PC (i.e. the standard deviations squared), whereas a traditional scree plot plots the proportion of the variance explained by each PC. For that reason, I'd prefer to create the scree plot myself using `ggplot`
+
+```{r}
+plot(pen_pca)
+
+# Do it yourself with ggplot:
+pca_scree = data.frame(pc = c(1:4),
+                       var = summary(pen_pca)$importance[2,])
+ggplot(aes(x=pc, y=var), data=pca_scree) +
+  geom_col() +
+  geom_point(size=4) +
+  geom_line() +
+  ggtitle("Scree plot") + ylab("Proportion variance explained") + xlab("PC") +
+  theme_bw()
+```
+
+### Biplot
+
+Typically when you run a PCA, you produce a biplot, where you plot PC1 on your `x` axis and PC2 on your `y` axis. It's hard to visualize more than 2 dimensions, so the hope is that your PC1 and PC2 combine to explain most of the variation in your data. You can use ggplot to make a biplot:
+
+```{r}
+pen_pca_meta = cbind(pen_pca$x, pen_meta) # join PCs and metadata into single table for easier plotting. 
+# pen_pca_meta = broom::augment(pen_pca, data=pen_num) # or join metadata using augment()
+ggplot() +
+  geom_point(aes(x=PC1, y=PC2, color=species, shape=sex), data=pen_pca_meta) +
+  coord_fixed(ratio=1) # So scale if PC1 is same as PC2 (avoiding biased interpretations)
+```
+
+However, if you use one of the packages available like `ggbiplot` or `factoextra`, you can very easily add some nice looking bells and whistles, like drawing ellipses around your groups of data or adding in arrows that show the loadings of your original variables onto the PCs:
+
+```{r}
+# library(devtools) # may need to re-install rlang with dependencies first
+# install_github("vqv/ggbiplot") # available on github, not on CRAN
+library(ggbiplot)
+
+# Plot it
+biplot(pen_pca) # points are row numbers
+ggbiplot(pen_pca) 
+
+# Plot PC1 vs PC1 (classic biplot)
+ggbiplot(pen_pca, scale = 1, groups = pen_meta$species, ellipse = T)
+
+# Change point shape to reflect penguins sex
+ggbiplot(pen_pca, scale = 1, groups = pen_meta$species, ellipse = T, alpha=0) + # use alpha=0 to hide the points
+  geom_point(aes(color=pen_meta$species, shape=pen_meta$sex)) + # draw the points with specified shape
+  # geom_point(aes(x=PC1, y=PC2, color=species, shape=sex), data=pen_pca_meta)
+  xlim(-3,3) + # might need to widen axis limits if arrow labels are getting cut off
+  coord_fixed(ratio=1) + # keep ratio of x and y axis even to avoid biasing interpretation of PC1 and PC2
+  theme_bw() 
+
+# Plot PC3 vs. PC4 to see if there is more interesting variation (there isn't...)
+ggbiplot(pen_pca, scale = 1, groups = pen_meta$species, ellipse = T, choices=c(3,4)) 
+
+```
+
+The arrows show the loadings of the 4 variables on each PC. Arrows that point in very similar directions indicate variables that are highly correlated with each other, so flipper length body mass are highly correlated. The length of an arrow along each axis indicates how much it contributes to the corresponding PC (where x axis = PC1 and y axis = PC2). Since the flipper length and body mass arrows are almost completely horizontal, we see they contribute a lot to PC1, but not much at all to PC2. The bill length and bill depth arrows contribute substantially to both PC1 and PC2, since they fall more diagonal lines. However, the direction of their contribution to PC1 is opposite (increasing bill length corresponds to increasing PC1; increasing bill depth corresponds to decreasing PC1). The direction of the contribution of bill length and bill depth is the same for PC2, such that when bill depth or bill length increase, the value of PC2 decreases.
+
+***
+
+### Exercise 4.1
+
+Now run a PCA using just the Gentoo species in the penguins dataset. Plot a biplot either by plotting PC1 vs. PC2 using ggplot, or by using a special function from the `ggbiplot` package such as `biplot()` or `ggbiplot()`. Change the point color based on the penguin's sex. Which PC explains most of the variance that distinguishes male and female Gentoo penguins?
+
+***
+
+### For more information:
+
+Check out the free textbook Practical Guide to Principal Component Methods in R: <https://www.datanovia.com/en/wp-content/uploads/dn-tutorials/book-preview/principal-component-methods-in-r-preview.pdf> This book provides more info on PCAs, and also covers things like Correspondence Analysis and Factor Analysis, which are useful when you need to include categorical variables in your analysis.
+
+You might also want to look into the `factoextra` package, which has some handy tools for visualizing the results of your PCA
+
+Here's an interesting explanation of PCAs using image compression as an example: <https://www.section.io/engineering-education/image-compression-using-pca/>
+
