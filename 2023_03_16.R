@@ -105,10 +105,16 @@ collapse_yr = collapse %>%
   ungroup()
 glimpse(collapse_yr)
 
-ggplot(data = collapse_yr, aes(x=first_collapse_yr)) +
-  geom_histogram(color="black", fill="white", binwidth=5)
+ggplot(data = collapse_yr) +
+  geom_histogram(aes(x=first_collapse_yr), binwidth=5)
+
+collapse_ts = collapse_yr %>%
+  count(first_collapse_yr) %>%
+  mutate(cum_first_collapse_yr = cumsum(n))
+
+head(collapse_ts)
+ggplot(data= collapse_ts) +
+  geom_line(aes(x= first_collapse_yr, y= cum_first_collapse_yr))
 
 
-
-lkjfdof]-w
 
